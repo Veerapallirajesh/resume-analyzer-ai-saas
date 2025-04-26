@@ -6,7 +6,7 @@ import fitz  # PyMuPDF
 
 app = FastAPI()
 
-# Enable CORS (so frontend can call backend)
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -66,7 +66,7 @@ async def analyze_resume(
 
     return {
         "resume": resume.filename,
-        "preview": resume_text[:1500],  # Show 1500 characters
-        "job_desc": job_desc[:1500],    # Show 1500 characters
-        "score": score                  # Matching Score
+        "preview": resume_text[:7000],  # ✨ 7000 characters now
+        "job_desc": job_desc[:7000],    # ✨ 7000 characters now
+        "score": score                  # Match Score %
     }
