@@ -6,6 +6,7 @@ import fitz  # PyMuPDF
 
 app = FastAPI()
 
+# Enable CORS (so frontend can call backend)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,6 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Functions to read different file types
 def read_txt(file_bytes):
     return file_bytes.decode('utf-8', errors='ignore')
 
@@ -28,6 +30,19 @@ def read_pdf(file):
             text += page.get_text()
     return text
 
+# Function to calculate match score
+def calculate_match_score(resume_text, job_desc):
+    resume_words = set(resume_text.lower().split())
+    job_desc_words = set(job_desc.lower().split())
+    matching_words = resume_words.intersection(job_desc_words)
+    
+    if not job_desc_words:
+        return 0
+    
+    score = (len(matching_words) / len(job_desc_words)) * 100
+    return round(score, 2)
+
+# API Endpoint
 @app.post("/analyze/")
 async def analyze_resume(
     resume: UploadFile = File(...),
@@ -39,16 +54,19 @@ async def analyze_resume(
         contents = await resume.read()
         resume_text = read_txt(contents)
     elif extension == ".pdf":
-        resume.file.seek(0)  # Reset file pointer!
+        resume.file.seek(0)
         resume_text = read_pdf(resume.file)
     elif extension == ".docx":
-        resume.file.seek(0)  # Reset file pointer!
+        resume.file.seek(0)
         resume_text = read_docx(resume.file)
     else:
         return {"error": "Unsupported file type"}
 
+    score = calculate_match_score(resume_text, job_desc)
+
     return {
         "resume": resume.filename,
-        "preview": resume_text[:300],
-        "job_desc": job_desc[:150]
+        "preview": resume_text[:1500],  # Show 1500 characters
+        "job_desc": job_desc[:1500],    # Show 1500 characters
+        "score": score                  # Matching Score
     }
