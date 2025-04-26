@@ -1,52 +1,54 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
-from PyPDF2 import PdfReader
-import docx
+import os
+from docx import Document
+import fitz  # PyMuPDF
 
 app = FastAPI()
 
-# Allow frontend to access backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-def extract_text_from_docx(file):
-    doc = docx.Document(file)
-    return "\n".join([para.text for para in doc.paragraphs])
+def read_txt(file_bytes):
+    return file_bytes.decode('utf-8', errors='ignore')
 
-def extract_text_from_pdf(file):
-    reader = PdfReader(file)
-    return "\n".join([page.extract_text() or "" for page in reader.pages])
+def read_docx(file):
+    doc = Document(file)
+    return '\n'.join([para.text for para in doc.paragraphs])
+
+def read_pdf(file):
+    text = ""
+    with fitz.open(stream=file.read(), filetype="pdf") as pdf:
+        for page in pdf:
+            text += page.get_text()
+    return text
 
 @app.post("/analyze/")
-async def analyze_resume(resume: UploadFile = File(...), job_desc: str = Form(...)):
-    try:
-        content = await resume.read()
-        filename = resume.filename.lower()
+async def analyze_resume(
+    resume: UploadFile = File(...),
+    job_desc: str = Form(...)
+):
+    extension = os.path.splitext(resume.filename)[1].lower()
 
-        if filename.endswith('.txt'):
-            resume_text = content.decode("utf-8", errors="ignore")
-        elif filename.endswith('.pdf'):
-            with open("temp.pdf", "wb") as f:
-                f.write(content)
-            resume_text = extract_text_from_pdf("temp.pdf")
-        elif filename.endswith('.docx'):
-            with open("temp.docx", "wb") as f:
-                f.write(content)
-            resume_text = extract_text_from_docx("temp.docx")
-        else:
-            return JSONResponse(status_code=400, content={"error": "Unsupported file format"})
+    if extension == ".txt":
+        contents = await resume.read()
+        resume_text = read_txt(contents)
+    elif extension == ".pdf":
+        resume.file.seek(0)  # Reset file pointer!
+        resume_text = read_pdf(resume.file)
+    elif extension == ".docx":
+        resume.file.seek(0)  # Reset file pointer!
+        resume_text = read_docx(resume.file)
+    else:
+        return {"error": "Unsupported file type"}
 
-        # Dummy analysis
-        overlap = set(resume_text.lower().split()) & set(job_desc.lower().split())
-        score = len(overlap)
-
-        return {"result": f"Matched words: {', '.join(overlap)}\nScore: {score}"}
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    return {
+        "resume": resume.filename,
+        "preview": resume_text[:300],
+        "job_desc": job_desc[:150]
+    }
